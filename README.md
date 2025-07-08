@@ -56,11 +56,29 @@ $ python -m venv .venv && source .venv/bin/activate  # PowerShell: .venv\Scripts
 # 3. Install dependencies
 $ pip install -r requirements.txt
 
+# 3b. (Optional) Postgres
+$ docker run --name agentic-postgres -e POSTGRES_PASSWORD=password -p 5432:5432 -d postgres:16
+$ echo "DATABASE_URL=postgresql+psycopg2://postgres:password@localhost:5432/postgres" > .env
+
 # 4. Launch local API (runs on http://localhost:8000)
 $ python run_server.py
 ```
 
 Open your browser at `http://localhost:8000/docs` to explore the interactive Swagger UI.
+
+### CLI Chatbot Test
+
+```bash
+python examples/chatbot_cli.py
+#    you> /echo hello
+#    bot> hello
+
+# Database tool examples
+you> /db {"action": "add", "data": "hello"}
+you> /db {"action": "list"}
+```
+
+Behind the scenes the `/db` tool operates on a local SQLite file located at `data/sample.db`. Actions supported: `add`, `delete`, `update`, `list`.
 
 ---
 
