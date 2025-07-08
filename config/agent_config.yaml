@@ -1,0 +1,9 @@
+model:
+  provider: openai
+  name: gpt-4o-mini-2024-05-13
+  temperature: 0.7
+logging:
+  level: INFO
+tools:
+  - name: echo
+    description: Simple echo tool 
