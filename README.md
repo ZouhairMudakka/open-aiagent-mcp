@@ -134,22 +134,22 @@ See the full license text in the `LICENSE` file.
 
 ```mermaid
 graph TD
-    A[Browser / CLI] -->|HTTP (FastAPI)| B(FastAPI App)
-    B --> C(Coordinator)
-    C --> D1[Agent 1]
-    C --> D2[Agent 2+]
+    A["Browser / CLI"] -->|HTTP| B["FastAPI App"]
+    B --> C[Coordinator]
+    C --> D1["Agent 1"]
+    C --> D2["Agent 2+"]
     %% intra-agent comms
-    subgraph Message Bus
-        D1 -- pub/sub --> D2
+    subgraph Message_Bus
+        D1 -- "pub/sub" --> D2
     end
-    D1 --> E(Tool Registry)
+    D1 --> E["Tool Registry"]
     D2 --> E
-    E --> F[DBTool ⬌ SQLAlchemy]
-    E --> G[Zapier Connector]
-    E --> H[n8n Connector]
-    F --> I[(PostgreSQL / SQLite)]
-    G --> J(Zapier MCP Server)
-    H --> K(n8n MCP Server)
+    E --> F["DBTool (SQLAlchemy)"]
+    F --> I[("PostgreSQL | SQLite")]
+    E --> G["Zapier Connector"]
+    G --> J["Zapier MCP Server"]
+    E --> H["n8n Connector"]
+    H --> K["n8n MCP Server"]
 ```
 
 The flow:
@@ -192,12 +192,15 @@ The flow:
 
 | Domain            | Scenario                                                                                  |
 |-------------------|-------------------------------------------------------------------------------------------|
-| Customer Support  | Multi-agent team triages tickets: one agent classifies, another drafts responses, tools push updates to Zendesk via Zapier |
-| Data Engineering  | Agents orchestrate ETL: Planner breaks tasks, DBTool writes staging data, n8n triggers downstream workflows |
-| Real-estate CRM   | Chatbot logs prospects into Postgres, schedules viewings via Google Calendar tool, emails confirmations |
-| Research Assistant| Agents split literature review, each summarises papers, collective summary merged via Message Bus |
+| Customer Support  | Multi-agent team triages tickets: one agent classifies, another drafts responses, Zapier tools update Zendesk & Slack |
+| Data Engineering  | Agents orchestrate ETL: Planner breaks tasks, DBTool writes staging data, n8n workflows trigger downstream jobs |
+| Real-estate CRM   | Chatbot logs prospects into Postgres, schedules viewings via Google Calendar (Zapier) & notifies sales via n8n |
+| Marketing Ops     | Agent analyzes campaign metrics, then uses Zapier Email & Sheets tools to send weekly KPI digests |
+| Dev Productivity  | Agents trigger CI/CD or GitHub issue automations via custom n8n MCP workflows |
 
 Feel free to open issues or PRs with ideas — the roadmap is community-driven! 
+
+> 🔗 Useful resources: [Zapier MCP docs](https://zapier.com/mcp), [Build n8n MCP server template](https://n8n.io/workflows/3770-build-your-own-n8n-workflows-mcp-server/), and [n8n MCP Client Tool node docs](https://docs.n8n.io/integrations/builtin/cluster-nodes/sub-nodes/n8n-nodes-langchain.toolmcp/).
 
 ---
 
