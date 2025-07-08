@@ -129,3 +129,103 @@ Personal and academic use is free. **Commercial use requires a separate
 license—contact [hello@mudakka.com](mailto:hello@mudakka.com).**
 
 See the full license text in the `LICENSE` file. 
+
+## 🖼️ Architecture Overview
+
+```mermaid
+graph TD
+    A[Browser / CLI] -->|HTTP (FastAPI)| B(FastAPI App)
+    B --> C(Coordinator)
+    C --> D1[Agent 1]
+    C --> D2[Agent 2+]
+    %% intra-agent comms
+    subgraph Message Bus
+        D1 -- pub/sub --> D2
+    end
+    D1 --> E(Tool Registry)
+    D2 --> E
+    E --> F[DBTool ⬌ SQLAlchemy]
+    E --> G[Zapier Connector]
+    E --> H[n8n Connector]
+    F --> I[(PostgreSQL / SQLite)]
+    G --> J(Zapier MCP Server)
+    H --> K(n8n MCP Server)
+```
+
+The flow:
+1. User sends a request to the FastAPI endpoint (`/chat`).
+2. FastAPI forwards the prompt to the **Coordinator**, which selects or spins-up an **Agent**.
+3. The Agent reasons/plans, then invokes tools via the **Tool Registry**.
+4. Tools can hit the local **DBTool** (backed by SQLAlchemy/Postgres) or external MCP servers like Zapier & n8n.
+5. Multiple agents exchange messages over an in-memory **Message Bus**.
+
+---
+
+## 🚧 Further Development & Possibilities
+
+1. **Tooling**
+   • Wrap more APIs as MCP tools (e-mail, calendars, vector search, etc.).  
+   • Publish a public registry so agents discover tools dynamically.
+
+2. **Reasoning & Memory**
+   • Plug in advanced planning trees or RAG pipelines.  
+   • Add vector-store memory of past conversations.
+
+3. **Scalability**
+   • Swap the in-memory message bus for Redis or NATS to span multiple processes.  
+   • Containerise with Docker Compose for API + Postgres + worker pool.
+
+4. **Security & Auth**
+   • OIDC / API-key auth on FastAPI routes.  
+   • Secret management via Vault or AWS SM.
+
+5. **CI/CD & Testing**
+   • Add pytest suites for agents, tools, and DB layer.  
+   • GitHub Actions workflow with lint, type-check & unit tests.
+
+6. **Frontend**
+   • Minimal React/Next.js or Streamlit client that streams agent tokens.
+
+---
+
+## 🎯 Example Use Cases
+
+| Domain            | Scenario                                                                                  |
+|-------------------|-------------------------------------------------------------------------------------------|
+| Customer Support  | Multi-agent team triages tickets: one agent classifies, another drafts responses, tools push updates to Zendesk via Zapier |
+| Data Engineering  | Agents orchestrate ETL: Planner breaks tasks, DBTool writes staging data, n8n triggers downstream workflows |
+| Real-estate CRM   | Chatbot logs prospects into Postgres, schedules viewings via Google Calendar tool, emails confirmations |
+| Research Assistant| Agents split literature review, each summarises papers, collective summary merged via Message Bus |
+
+Feel free to open issues or PRs with ideas — the roadmap is community-driven! 
+
+---
+
+## 🔑 API Keys & External MCP Setup
+
+### Zapier Natural Language Actions (NLA)
+1. Log in to Zapier → https://nla.zapier.com/.
+2. Click **Generate an API Key** (or reuse an existing one).
+3. Copy the key into your `.env` → `ZAPIER_API_KEY=sk_live_...`
+4. Make sure each Zap you want to expose is marked **“Use as Action in AI”**; that exposes it as an MCP tool.
+5. Optional: set `ZAPIER_BASE_URL` if you’re on a dedicated Zapier domain.
+
+Test:
+```python
+from src.mcp.connectors.zapier_connector import ZapierConnector
+print(ZapierConnector().list_tools())
+```
+
+### n8n MCP
+1. Deploy n8n ≥ v1.18 with the MCP plugin enabled (or use n8n.cloud where it’s pre-enabled).
+2. Create an **API Key** under *Settings → API* and set `N8N_API_KEY` in `.env`.
+3. Build workflows with an **MCP Trigger** node so that they appear as tools.
+4. If self-hosting, set `N8N_BASE_URL=https://your-n8n-domain/mcp`.
+
+Test:
+```python
+from src.mcp.connectors.n8n_connector import N8NConnector
+print(N8NConnector().list_workflows())
+```
+
+--- 
