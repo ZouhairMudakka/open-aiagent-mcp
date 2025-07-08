@@ -111,4 +111,5 @@ $RECYCLE.BIN/
 
 # Others
 *.sqlite3
-migrations/ 
+migrations/
+data/*.db 
