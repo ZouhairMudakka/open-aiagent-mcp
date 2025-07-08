@@ -9,6 +9,7 @@ from pydantic import BaseModel
 from ..mcp.protocol import MCPMessage, MCPToolCall, MCPToolResponse  # type: ignore
 from ..mcp.connectors.zapier_connector import ZapierConnector  # type: ignore
 from ..mcp.connectors.n8n_connector import N8NConnector  # type: ignore
+from ..tools.db_tool import DBTool
 
 
 class Tool(BaseModel):
@@ -36,6 +37,14 @@ class Agent:
             "echo",
             "Returns whatever input it receives.",
             lambda text: text,
+        )
+
+        # Database tool (usage: /db {"action": "add", "data": "hello"})
+        self.db_tool = DBTool()
+        self.register_tool(
+            "db",
+            "Add, delete, update, or list rows in the sample SQLite DB.",
+            self.db_tool,
         )
 
     # ---------------------------------------------------------------------
