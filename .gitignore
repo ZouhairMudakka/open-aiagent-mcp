@@ -113,3 +113,7 @@ $RECYCLE.BIN/
 *.sqlite3
 migrations/
 data/*.db 
+official_library_letter.md
+letterhead.html
+official_library_letter.pdf
+signature.png

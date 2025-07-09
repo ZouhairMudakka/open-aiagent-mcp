@@ -1,5 +1,7 @@
 # Agentic AI Framework with MCP Support
 
+![Agentic AI Logo](logo.png)
+
 Welcome to **Agentic AI**, an open-source Python framework that makes it easy to build advanced AI agents with first-class **Model Context Protocol (MCP)** integration and a plug-in tool system.  
 The project is intentionally lightweight, transparent, and extensible so that researchers, hobbyists, and companies alike can experiment with multi-agent architectures, reasoning strategies, and external toolchains such as **Zapier** or **n8n**.
 
