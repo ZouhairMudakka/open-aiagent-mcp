@@ -15,6 +15,7 @@ The project is intentionally lightweight, transparent, and extensible so that re
 * **FastAPI Sandbox** – Spin up a local HTTP API (`uvicorn src.app:app --reload`) and talk to your agent from the browser at `http://localhost:8000`.
 * **Config-as-YAML** – Tweak model names, prompts, logging levels, and more without touching the code.
 * **Batteries Included** – Sample prompts, simple reasoning engine, and working Zapier/n8n connectors so you can see end-to-end flows immediately.
+* **Multi-Provider LLM Support** – Swap between OpenAI, Anthropic (Claude), Google Gemini, or DeepSeek just by changing an env var or YAML config—no code edits required.
 
 ---
 
@@ -136,11 +137,40 @@ Build the Docker image → push to a registry → apply a Deployment + Service (
 
 ```
 OPENAI_API_KEY=...
+ANTHROPIC_API_KEY=...
+GOOGLE_API_KEY=...
+DEEPSEEK_API_KEY=...
+LLM_PROVIDER=openai   # or anthropic | gemini | deepseek
 DATABASE_URL=postgresql+psycopg2://user:pass@host:5432/dbname
 ZAPIER_API_KEY=...
 N8N_API_KEY=...
 N8N_BASE_URL=https://your-n8n-domain/mcp  # if using n8n
 ```
+
+---
+
+## 🧠 Switching LLM Providers
+
+The framework loads its model info from `config/agent_config.yaml` **or** falls back to environment variables. Two ways to change provider:
+
+1. **.env / shell vars (quick test)**
+   ```bash
+   # Anthropic Claude Sonnet
+   export LLM_PROVIDER=anthropic
+   export ANTHROPIC_API_KEY=sk-ant-...
+   python run_server.py
+   ```
+
+2. **YAML config (committed to repo)**
+   ```yaml
+   # config/agent_config.yaml
+   model:
+     provider: gemini   # openai | anthropic | gemini | deepseek
+     name: gemini-pro
+     temperature: 0.5
+   ```
+
+No other change is required—the unified `get_llm_client()` factory selects the correct adapter under `src/llm/` at runtime.
 
 ---
 
