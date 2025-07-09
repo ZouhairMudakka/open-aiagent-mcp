@@ -68,6 +68,82 @@ $ python run_server.py
 
 Open your browser at `http://localhost:8000/docs` to explore the interactive Swagger UI.
 
+---
+
+## 🌐 Deployment Options
+
+You’re not limited to `localhost`—the framework is cloud-ready out of the box. Pick a path that fits your scale and comfort level:
+
+### 1. One-Click PaaS (Render, Railway, Fly.io)
+1. **Create** a new web service and point it at your GitHub fork.
+2. **Build command:** `pip install -r requirements.txt`
+3. **Start command:** `uvicorn src.app:app --host 0.0.0.0 --port $PORT`
+4. **Add environment variables** (e.g., `OPENAI_API_KEY`, `DATABASE_URL`) in the platform dashboard.
+
+### 2. Docker & Docker Compose (works anywhere)
+Create a `Dockerfile` in the project root:
+
+```Dockerfile
+FROM python:3.11-slim
+WORKDIR /app
+COPY . .
+RUN pip install --no-cache-dir -r requirements.txt
+EXPOSE 8000
+CMD ["uvicorn", "src.app:app", "--host", "0.0.0.0", "--port", "8000"]
+```
+
+Optional `docker-compose.yml` for Postgres:
+
+```yaml
+version: "3.9"
+services:
+  api:
+    build: .
+    ports: ["8000:8000"]
+    env_file: .env
+    depends_on: [db]
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-password}
+volumes:
+  postgres_data:
+```
+
+### 3. VM / Bare-Metal (NGINX + Gunicorn)
+1. SSH into your server; install Python 3.11, Postgres, and NGINX.
+2. Clone the repo and start Gunicorn for production robustness:
+
+```bash
+pip install gunicorn uvicorn
+gunicorn -k uvicorn.workers.UvicornWorker -c gunicorn_conf.py src.app:app
+```
+
+Example `gunicorn_conf.py`:
+
+```python
+bind = "0.0.0.0:8000"
+workers = 4
+timeout = 120
+```
+
+Configure NGINX as a reverse proxy with SSL (Let’s Encrypt) and set up a **Supervisor** or `systemd` unit to keep the service running.
+
+### 4. Kubernetes (for teams & scale)
+Build the Docker image → push to a registry → apply a Deployment + Service (or Helm chart). Pair with managed Postgres (e.g., Amazon RDS) and add an HPA if you expect traffic spikes.
+
+**Key environment variables:**
+
+```
+OPENAI_API_KEY=...
+DATABASE_URL=postgresql+psycopg2://user:pass@host:5432/dbname
+ZAPIER_API_KEY=...
+N8N_API_KEY=...
+N8N_BASE_URL=https://your-n8n-domain/mcp  # if using n8n
+```
+
+---
+
 ### CLI Chatbot Test
 
 ```bash
