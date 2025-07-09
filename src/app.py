@@ -86,13 +86,11 @@ async def websocket_endpoint(ws: WebSocket):
                 continue
 
             logger.debug("[ws] prompt=%s", prompt)
-            print("[DEBUG] ws prompt:", prompt)
 
             # Call agent synchronously (fast for PoC)
             response_text = agent.chat(prompt)
 
             logger.debug("[ws] response=%s", response_text)
-            print("[DEBUG] ws response:", response_text)
 
             # Stream tokens
             for tok in _chunk_tokens(response_text):
