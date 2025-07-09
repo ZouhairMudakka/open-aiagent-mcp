@@ -14,6 +14,7 @@ The project is intentionally lightweight, transparent, and extensible so that re
 * **Tool Registry** – Register new capabilities (search, calculations, retrieval, etc.) in a single line of code.
 * **FastAPI Sandbox** – Spin up a local HTTP API (`python run_server.py` or `uvicorn src.app:app --reload`) with interactive docs at `http://localhost:8000/docs`.
 * **Live Web UI** – Built-in chat front-end at `http://localhost:8000/ui` that streams tokens in real time via WebSockets.
+* **Hot-Reload Settings** – Tweak provider/model/temperature at runtime via the `/settings` REST endpoint (no restart required).
 * **Config-as-YAML** – Tweak model names, prompts, logging levels, and more without touching the code.
 * **Batteries Included** – Sample prompts, simple reasoning engine, and working Zapier/n8n connectors so you can see end-to-end flows immediately.
 * **Multi-Provider LLM Support** – Swap between OpenAI, Anthropic (Claude), Google Gemini, or DeepSeek just by changing an env var or YAML config—no code edits required.
@@ -22,26 +23,33 @@ The project is intentionally lightweight, transparent, and extensible so that re
 
 ## 🗂️ Project Structure
 ```
-Agentic_AI_Project/
+Open-AIAgent-MCP/
 ├── config/                # YAML configs for models, logging, prompts, etc.
 ├── src/                   # All Python source code
-│   ├── llm/               # LLM client helpers (OpenAI, Claude, etc.)
-│   ├── tools/             # Re-usable tool wrappers (search, calc, retrieval)
+│   ├── app.py             # FastAPI entrypoint (mounts /ws & /ui)
+│   ├── settings.py        # RuntimeSettings dataclass + REST helpers
 │   ├── agents/            # Reasoning, planning, multi-step orchestration
-│   │   └── base_agent.py  # Core Agent class (MCP aware)
+│   │   ├── coordinator.py
+│   │   ├── planner.py
+│   │   ├── reasoning_engine.py
+│   │   └── base_agent.py
+│   ├── llm/               # Provider adapters (OpenAI, Anthropic, Gemini, DeepSeek)
+│   ├── tools/             # Re-usable tool wrappers (DB, Search, etc.)
+│   ├── db/                # SQLAlchemy models + session helpers
+│   ├── communication/     # Message bus / agent-to-agent channels
 │   ├── mcp/               # MCP protocol helpers & connectors
 │   │   └── connectors/
 │   │       ├── zapier_connector.py
 │   │       └── n8n_connector.py
-│   ├── communication/     # Message bus / agent-to-agent channels
-│   ├── utils/             # Logging, rate limiting, caching, etc.
-│   ├── webui/             # Static chat UI (HTML/JS/CSS served at /ui)
-│   └── app.py             # FastAPI entrypoint
-├── data/                  # Runtime data & caches (auto-created)
-├── examples/              # Notebooks and scripts that showcase usage
-├── LICENSE                # CC BY-NC 4.0 license (personal use)
-├── requirements.txt       # Python deps
-└── run_server.py          # Helper script to launch FastAPI quickly
+│   ├── utils/             # Logging, rate limiting, token counting, etc.
+│   └── webui/             # Static chat UI (HTML/JS/CSS served at /ui)
+├── scripts/               # Windows helper scripts (restart-server.ps1, etc.)
+├── examples/              # Notebooks and CLI chatbot demo
+├── env.example            # Sample .env with documented keys
+├── requirements.txt       # Python dependencies
+├── run_server.py          # Helper to launch FastAPI quickly
+├── setup.py               # Editable install support
+└── LICENSE
 ```
 
 The tree above mirrors the structure shown in the reference image.
@@ -244,16 +252,19 @@ See the full license text in the `LICENSE` file.
 
 ```mermaid
 graph TD
-    A["Browser / CLI"] -->|HTTP| B["FastAPI App"]
+    subgraph Client
+        A1["Browser UI (\"/ui\")"] -- WebSocket --> A2["/ws"]
+        A1 -- REST --> A3["/settings"]
+        A4["CLI / scripts"] -- HTTP --> B["FastAPI App"]
+    end
+    A2 -->|token stream| A1
     B --> C[Coordinator]
     C --> D1["Agent 1"]
     C --> D2["Agent 2+"]
-    %% intra-agent comms
     subgraph Message_Bus
         D1 -- "pub/sub" --> D2
     end
-    D1 --> E["Tool Registry"]
-    D2 --> E
+    D1 & D2 --> E["Tool Registry"]
     E --> F["DBTool (SQLAlchemy)"]
     F --> I[("PostgreSQL | SQLite")]
     E --> G["Zapier Connector"]
