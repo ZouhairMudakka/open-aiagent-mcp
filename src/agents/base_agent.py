@@ -49,13 +49,44 @@ class Agent:
             lambda text: text,
         )
 
-        # Database tool (usage: /db {"action": "add", "data": "hello"})
+        # ------------------------------------------------------------
+        # Low-level DB tool (slash-command style)
+        # ------------------------------------------------------------
         self.db_tool = DBTool()
         self.register_tool(
             "db",
             "Add, delete, update, or list rows in the sample SQLite DB.",
             self.db_tool,
         )
+
+        # ------------------------------------------------------------
+        # Natural-language friendly helpers
+        # ------------------------------------------------------------
+
+        def db_add(data: str | Dict[str, Any] = None, **kwargs):
+            """Add a text entry to the sample database.
+
+            Pass either a plain string (data) or an object {"data": "..."}."""
+            if isinstance(data, dict):
+                payload = data
+            else:
+                payload = {"data": data}
+            return self.db_tool({"action": "add", **payload})
+
+        def db_list():
+            """Return every row currently stored in the sample database."""
+            return self.db_tool({"action": "list"})
+
+        def send_email(to: str, subject: str, body: str):
+            """Send an e-mail via the pre-configured Zapier workflow."""
+            return self.zapier.call_tool(
+                "send_email",
+                {"to": to, "subject": subject, "body": body},
+            )
+
+        self.register_tool("db_add", "Add a text entry to the DB", db_add)
+        self.register_tool("db_list", "List all DB rows", db_list)
+        self.register_tool("send_email", "Send an e-mail via Zapier", send_email)
 
         # LangChain agent executor (lazy init)
         self._executor: AgentExecutor | None = None
@@ -137,7 +168,6 @@ class Agent:
     # ------------------------------------------------------------------
     def invoke_tool(self, tool_name: str, payload: Any):
         logging.debug("[tool] invoking name=%s payload=%s", tool_name, payload)
-        print("[DEBUG] tool invoke", tool_name, payload)
 
         # If the payload is a JSON string (like '{"action":"add"}') convert it to a dict
         if isinstance(payload, str):
@@ -155,7 +185,6 @@ class Agent:
             result = tool(payload)
             self._events.append({"tool": tool_name, "payload": payload, "result": result})
             logging.debug("[tool] result name=%s result=%s", tool_name, result)
-            print("[DEBUG] tool result", tool_name, result)
             return result
 
         # External connectors
