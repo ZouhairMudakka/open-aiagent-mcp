@@ -1,6 +1,7 @@
+# Example runtime defaults (optional). Leave empty to configure via .env or UI.
 model:
-  provider: openai
-  name: gpt-4o-mini-2024-05-13
+  provider: ""
+  name: ""
   temperature: 0.7
 logging:
   level: INFO

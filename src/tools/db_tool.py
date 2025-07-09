@@ -57,3 +57,11 @@ class DBTool:
                 raise RuntimeError(str(exc)) from exc
 
         raise ValueError("Unsupported DB action; choose add/delete/update/list") 
+
+
+# ---------------------------------------------------------------------------
+# Export a ready-to-use singleton instance so callers can simply do
+# `from src.tools.db_tool import db_tool` without instantiating.
+# ---------------------------------------------------------------------------
+
+db_tool = DBTool() 
