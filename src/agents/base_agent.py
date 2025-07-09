@@ -118,12 +118,17 @@ class Agent:
             return str(self.invoke_tool(tool_name, args))
 
         # ---------------------------------------------------------------
-        # If provider is openai and tools available, use LangChain agent
+        # If provider is openai and tools available, use classifier first
         # ---------------------------------------------------------------
 
         settings = self.settings_ref
 
         if settings.provider == "openai" and settings.model:
+            from .intent_classifier import classify as _cls
+            tool_name, tool_args = _cls(prompt)
+            if tool_name:
+                return str(self.invoke_tool(tool_name, tool_args))
+            # else delegate to LangChain agent
             return self._chat_via_langchain(prompt, settings)
 
         # Fallback: send to LLM
@@ -219,15 +224,18 @@ class Agent:
         if self._executor and self._executor.agent.llm.model_name == settings.model:
             return  # already built for same model
 
-        # Convert local tools to StructuredTool
+        # --- Build LangChain tools list ---
+        from langchain.agents import initialize_agent, AgentType
+
         lc_tools = []
         for t in self.tools.values():
             if not t.description:
                 continue
-            def _make_callable(f):
-                # Ensure we pass a plain dict payload
-                def _inner(payload: dict):
-                    return f(payload)
+
+            def _make_callable(func):
+                def _inner(**kwargs):
+                    # StructuredTool expects kwargs not payload
+                    return func(kwargs or "")
 
                 return _inner
 
@@ -240,11 +248,13 @@ class Agent:
             )
 
         llm = ChatOpenAI(model_name=settings.model, temperature=settings.temperature)
-        system_prompt = (
-            "You are an MCP-aware assistant. If a tool can satisfy the user,"
-            " return a JSON function call. Otherwise respond normally."
+
+        self._executor = initialize_agent(
+            tools=lc_tools,
+            llm=llm,
+            agent_type=AgentType.OPENAI_FUNCTIONS,
+            verbose=False,
         )
-        self._executor = create_openai_functions_agent(llm, lc_tools, system_prompt)
 
     def _chat_via_langchain(self, prompt: str, settings: RuntimeSettings) -> str:
         try:
