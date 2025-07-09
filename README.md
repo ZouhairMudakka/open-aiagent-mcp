@@ -32,6 +32,8 @@ Open-AIAgent-MCP/
 │   │   ├── coordinator.py
 │   │   ├── planner.py
 │   │   ├── reasoning_engine.py
+│   │   ├── intent_classifier.py
+│   │   ├── langgraph_skeleton.py
 │   │   └── base_agent.py
 │   ├── llm/               # Provider adapters (OpenAI, Anthropic, Gemini, DeepSeek)
 │   ├── tools/             # Re-usable tool wrappers (DB, Search, etc.)
@@ -221,6 +223,23 @@ in the `.env` file or environment variables:
 ZAPIER_API_KEY=your_key_here
 N8N_API_KEY=your_key_here
 ```
+
+---
+
+## 🧩 Agent Pipeline Components
+
+A quick overview of what's inside `src/agents/`:
+
+| File | Purpose |
+|------|---------|
+| `base_agent.py` | Core MCP-aware agent. Holds tool registry, chat interface, and LangChain runner. |
+| `intent_classifier.py` | Tiny LLM prompt that maps free-form text to a tool name + JSON args. Used when provider is OpenAI. |
+| `planner.py` | Converts a high-level goal into ordered steps using the ReasoningEngine. |
+| `reasoning_engine.py` | Lightweight wrapper around an LLM to generate chain-of-thought / rationale for the planner. |
+| `coordinator.py` | Spawns multiple agents and wires them together via the in-memory message bus. |
+| `langgraph_skeleton.py` | Placeholder for a future LangGraph-based multi-step graph agent – not wired into the app yet. |
+
+These modules are intentionally small so you can swap pieces (e.g. plug in your own planner) without major refactoring.
 
 ---
 
