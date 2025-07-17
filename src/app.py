@@ -14,6 +14,7 @@ load_dotenv(".env", override=False)
 from .agents.langgraph_agent import LangGraphAgent
 from .settings import RuntimeSettings
 from .llm import get_llm_client, OpenAIClient, AnthropicClient, GeminiClient, DeepSeekClient
+from src.utils.formatter import parse_if_json, pretty_markdown
 from src.utils.logger import setup_logger
 from src.tools.db_tool import db_tool
 import langchain
@@ -89,8 +90,22 @@ async def websocket_endpoint(ws: WebSocket):
 
             logger.debug("[ws] prompt=%s", prompt)
 
-            # Call agent asynchronously
-            response_text = await agent.chat(prompt)
+            try:
+                # Call agent asynchronously and capture any errors
+                raw_resp = await agent.chat(prompt)
+                # Attempt to prettify if response is JSON-like
+                try:
+                    obj = parse_if_json(raw_resp)
+                    response_text = pretty_markdown(obj)
+                except Exception:
+                    response_text = raw_resp
+            except Exception as exc:
+                # Send standardized error envelope and continue listening
+                err_msg = str(exc)
+                logger.error("[ws] agent.chat failed: %s", err_msg, exc_info=True)
+                await ws.send_json({"type": "error", "message": err_msg})
+                await ws.send_json({"type": "done"})
+                continue
 
             logger.debug("[ws] response=%s", response_text)
 
