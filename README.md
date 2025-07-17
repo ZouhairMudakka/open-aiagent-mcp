@@ -13,7 +13,13 @@ The project is intentionally lightweight, transparent, and extensible so that re
 * **MCP-Native** – Agents speak MCP out of the box so they can interoperate with any compliant server, including Zapier AI Actions and n8n MCP nodes.
 * **Tool Registry** – Register new capabilities (search, calculations, retrieval, etc.) in a single line of code.
 * **FastAPI Sandbox** – Spin up a local HTTP API (`python run_server.py` or `uvicorn src.app:app --reload`) with interactive docs at `http://localhost:8000/docs`.
-* **Live Web UI** – Built-in chat front-end at `http://localhost:8000/ui` that streams tokens in real time via WebSockets.
+* **Live Web UI 2.0** – Modern chat front-end at `http://localhost:8000/ui` that now:
+  * Streams assistant tokens AND tool-call events in real time.
+  * Shows a structured breadcrumb of each function call+result.
+  * Lets you change model/provider/temperature on the fly via the settings panel.
+  * Handles error envelopes gracefully so the page never crashes.
+* **LangGraph State-Machine Core** – The default agent is powered by a LangGraph `StateGraph` (agent → tools → agent…) that uses OpenAI’s function-calling API. Adding a new ToolSpec automatically updates both the runtime graph and the LLM schema.
+* **Postgres-first DB Tooling** – Switched from toy SQLite to a full Postgres backend with schema ops (`create_table`, `add_column`, etc.) and data ops (`insert_rows`, `select_rows`, …).
 * **Hot-Reload Settings** – Tweak provider/model/temperature at runtime via the `/settings` REST endpoint (no restart required).
 * **Config-as-YAML** – Tweak model names, prompts, logging levels, and more without touching the code.
 * **Batteries Included** – Sample prompts, simple reasoning engine, and working Zapier/n8n connectors so you can see end-to-end flows immediately.
@@ -80,6 +86,18 @@ $ python run_server.py
 ```
 
 Open your browser at `http://localhost:8000/docs` to explore the interactive Swagger UI, or go straight to `http://localhost:8000/ui` for the live chat interface.
+
+---
+
+## 📋 Current TODO Roadmap
+
+| ID | Task | Status |
+|----|------|--------|
+| `task_error_envelope` | Standardise error envelopes so the WebSocket never crashes | **pending** |
+| `task_intent_classifier` | Enrich examples + dynamic prompt so the classifier always picks the precise tool/action | **in_progress** |
+| `task_langgraph_agent` | Expand LangGraph agent with memory windowing & streaming edges | **completed** |
+| `task_pytest` | Add pytest integration tests (create → insert → select → drop flow) | **pending** |
+| `task_human_readable_outputs` | Post-process raw tool JSON into friendly English | **in_progress** |
 
 ---
 
@@ -376,11 +394,4 @@ print(N8NConnector().list_workflows())
 ## 🖥 Interactive Web Chat
 
 The repository now ships with a minimal yet powerful static web interface located in `src/webui/`.  
-Once the server is running simply open `http://localhost:8000/ui` in your browser and start chatting.
-
-Key aspects:
-* **Token Streaming** – The UI receives tokens over a WebSocket (`/ws`) and displays them with a sleek typing effect.
-* **Tool Events** – When the agent invokes a tool, the UI shows a highlighted message describing the call and its arguments.
-* **Settings Panel** – The client calls the `/settings` endpoints to read & patch runtime options (provider, model, temperature) without restarting the server.
-
-Feel free to replace the HTML/CSS/JS with anything you like—FastAPI just serves the directory. 
+Once the server is running simply open `http://localhost:8000/ui`
