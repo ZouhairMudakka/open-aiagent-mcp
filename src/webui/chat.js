@@ -71,10 +71,67 @@ loadSettings();
 
 let ws;
 
+function renderMarkdown(md) {
+  if (window.marked) {
+    return marked.parse(md);
+  }
+  // Fallback – escape HTML
+  return md.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/\n/g, "<br>");
+}
+
 function appendMessage(text, cls = "assistant") {
   const el = document.createElement("div");
   el.className = `message ${cls}`;
-  el.textContent = text;
+
+  // Simple heuristic: if the markdown renders a single <table>, apply overflow-scroll styling
+  const html = renderMarkdown(text);
+  el.innerHTML = html;
+
+  // If the content looks like our time_series JSON converted to markdown
+  // (contains headers bucket | count), convert to chart as well.
+  if (text.includes("bucket") && text.includes("count") && window.Chart) {
+    try {
+      const rows = text.trim().split("\n");
+      if (rows.length >= 3 && rows[0].includes("bucket") && rows[0].includes("count")) {
+        const labels = [];
+        const data = [];
+        // rows[2..] contain actual data rows: bucket | count
+        for (let i = 2; i < rows.length; i++) {
+          const parts = rows[i].split("|").map((s) => s.trim());
+          if (parts.length >= 2) {
+            labels.push(parts[0]);
+            data.push(Number(parts[1]));
+          }
+        }
+        if (data.length) {
+          const canvas = document.createElement("canvas");
+          el.appendChild(canvas);
+          new Chart(canvas, {
+            type: "bar",
+            data: {
+              labels,
+              datasets: [
+                {
+                  label: "Count",
+                  data,
+                  backgroundColor: "rgba(54, 162, 235, 0.5)",
+                },
+              ],
+            },
+            options: {
+              plugins: { legend: { display: false } },
+              scales: { x: { ticks: { autoSkip: true } } },
+              responsive: true,
+              maintainAspectRatio: false,
+            },
+          });
+        }
+      }
+    } catch (_) {
+      /* ignore chart errors */
+    }
+  }
+
   chatLog.appendChild(el);
   chatLog.scrollTop = chatLog.scrollHeight;
   return el;
