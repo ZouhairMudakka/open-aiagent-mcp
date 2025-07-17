@@ -86,6 +86,7 @@ class AgentState(TypedDict):
     """Shared state for each LangGraph run."""
 
     messages: List
+    read_only: bool
 
 # -----------------------------------------------------------------------------
 # LangGraph nodes
@@ -94,7 +95,7 @@ class AgentState(TypedDict):
 async def agent_node(state: Dict[str, Any]) -> Dict[str, Any]:
     messages = state["messages"]
     resp = await llm_with_tools.ainvoke(messages)  # type: ignore
-    return {"messages": messages + [resp]}
+    return {"messages": messages + [resp], "read_only": state.get("read_only", False)}
 
 async def tool_node(state: Dict[str, Any]) -> Dict[str, Any]:
     """Execute either a single OpenAI v1 `function_call` or a list of
@@ -103,6 +104,21 @@ async def tool_node(state: Dict[str, Any]) -> Dict[str, Any]:
     import json, uuid
 
     last = state["messages"][-1]
+    read_only = state.get("read_only", False)
+
+    MUTATIVE = {
+        "create_table",
+        "add_column",
+        "drop_table",
+        "drop_column",
+        "rename_column",
+        "insert_rows",
+        "update_rows",
+        "delete_rows",
+        "update",
+        "delete",
+        "insert",
+    }
 
     # New-style single function_call (OpenAI 2023-06 etc.)
     if (fc := last.additional_kwargs.get("function_call")) is not None:
@@ -128,6 +144,10 @@ async def tool_node(state: Dict[str, Any]) -> Dict[str, Any]:
         call_name = call.get("name") or call.get("function", {}).get("name", "unknown")
 
         try:
+            # Enforce read-only policy
+            if read_only and call_name in MUTATIVE:
+                raise RuntimeError("read_only_violation: mutative tool not allowed")
+
             result = _dispatch_tool(call)
             new_msgs.append(
                 ToolMessage(content=str(result), tool_call_id=call_id or call_name)
@@ -138,7 +158,7 @@ async def tool_node(state: Dict[str, Any]) -> Dict[str, Any]:
                 ToolMessage(content=f"ERROR: {exc}", tool_call_id=call_id or call_name)
             )
 
-    return {"messages": history + new_msgs}
+    return {"messages": history + new_msgs, "read_only": read_only}
 
 # -----------------------------------------------------------------------------
 # Build graph
@@ -235,6 +255,7 @@ class LangGraphAgent:
             "aggregate",
             "group",
             "describe",
+            "time series",
         ]
         mutative_keywords = [
             "insert",
@@ -263,7 +284,7 @@ class LangGraphAgent:
         msgs = schema_msgs
         msgs.append(HumanMessage(content=prompt))
 
-        initial_state = {"messages": msgs}
+        initial_state = {"messages": msgs, "read_only": is_analytic and not wants_modify}
         result = await workflow.ainvoke(initial_state)
         final_msg = result["messages"][-1]
         return final_msg.content
