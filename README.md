@@ -93,11 +93,16 @@ Open your browser at `http://localhost:8000/docs` to explore the interactive Swa
 
 | ID | Task | Status |
 |----|------|--------|
-| `task_error_envelope` | Standardise error envelopes so the WebSocket never crashes | **pending** |
-| `task_intent_classifier` | Enrich examples + dynamic prompt so the classifier always picks the precise tool/action | **in_progress** |
-| `task_langgraph_agent` | Expand LangGraph agent with memory windowing & streaming edges | **completed** |
-| `task_pytest` | Add pytest integration tests (create → insert → select → drop flow) | **pending** |
-| `task_human_readable_outputs` | Post-process raw tool JSON into friendly English | **in_progress** |
+| `error_envelope_standardization` | Standardise WebSocket error envelopes so the UI never crashes | ✅ **completed** |
+| `postgres_analytics_tools` | Aggregate / group_by / time_series / join_select helpers in `PostgresDBTool` | ✅ **completed** |
+| `safe_sql_layer_tests` | Safe-SQL generation layer & pytest integration | ✅ **completed** |
+| `migration_seed_script` | Auto-create tables + seed sample rows | ✅ **completed** |
+| `intent_classifier_dynamic_prompt` | Dynamic ToolSpec-driven classifier prompt with rich examples | ✅ **completed** |
+| `read_only_policy` | Analytic read-only mode with strict enforcement | ✅ **completed** |
+| `result_post_processing` | Markdown formatter & chart rendering of tool JSON | ✅ **completed** |
+| `pytest_error_envelope_tests` | Failure-path WebSocket envelope tests | ✅ **completed** |
+| `webui_render_tables_charts` | Render Markdown tables + sparkline/bar charts in Web UI | ✅ **completed** |
+| `webui_integrate_demo_ux` | Integrate advanced chat bubbles, responsive layout & typing indicator | 🚧 **pending** |
 
 ---
 
