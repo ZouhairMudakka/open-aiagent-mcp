@@ -61,6 +61,7 @@ from sqlalchemy import (
     Boolean,
     Text,
     DateTime,
+    Date,
     select,
     insert as sa_insert,
     update as sa_update,
@@ -90,6 +91,7 @@ _TYPE_MAP: Dict[str, Any] = {
     "bool": Boolean,
     "datetime": DateTime,
     "timestamp": DateTime,
+    "date": Date,
 }
 
 
@@ -134,6 +136,14 @@ class PostgresDBTool:
                 return self._drop_column(payload)
             if action == "rename_column":
                 return self._rename_column(payload)
+            if action == "aggregate":
+                return self._aggregate(payload)
+            if action == "group_by":
+                return self._group_by(payload)
+            if action == "time_series":
+                return self._time_series(payload)
+            if action == "join_select":
+                return self._join_select(payload)
 
             # data ops
             if action in {"select", "list"}:
@@ -230,8 +240,14 @@ class PostgresDBTool:
     # ------------------------------------------------------------------
 
     def _get_table(self, name: str):
-        # reflect existing or newly created table
-        return Table(name, self.md, autoload_with=engine, extend_existing=True)
+        """Return a SQLAlchemy Table or raise RuntimeError('table_not_found')."""
+        try:
+            return Table(name, self.md, autoload_with=engine, extend_existing=True)
+        except Exception as exc:
+            from sqlalchemy.exc import NoSuchTableError
+            if isinstance(exc, NoSuchTableError):
+                raise RuntimeError(f"table_not_found:{name}") from exc
+            raise
 
     def _insert(self, payload: Dict[str, Any]):
         tbl = self._get_table(payload["table"])
@@ -239,8 +255,12 @@ class PostgresDBTool:
         if values is None:
             raise ValueError("'insert' action requires 'values' (or 'data') field")
         with SessionLocal() as sess:
-            stmt = sa_insert(tbl).values(values)
-            res = sess.execute(stmt)
+            if isinstance(values, list):
+                stmt = sa_insert(tbl)
+                res = sess.execute(stmt, values)
+            else:
+                stmt = sa_insert(tbl).values(values)
+                res = sess.execute(stmt)
             sess.commit()
             return {"inserted": res.rowcount}
 
@@ -257,10 +277,14 @@ class PostgresDBTool:
         for col, val in where.items():
             stmt = stmt.where(tbl.c[col] == val)
 
-        if "limit" in payload:
-            stmt = stmt.limit(int(payload["limit"]))
-        if "offset" in payload:
-            stmt = stmt.offset(int(payload["offset"]))
+        # Apply LIMIT / OFFSET only when a non-None value is provided
+        limit_val = payload.get("limit")
+        if limit_val is not None:
+            stmt = stmt.limit(int(limit_val))
+
+        offset_val = payload.get("offset")
+        if offset_val is not None:
+            stmt = stmt.offset(int(offset_val))
 
         with SessionLocal() as sess:
             rows = sess.execute(stmt).mappings().all()
@@ -327,6 +351,124 @@ class PostgresDBTool:
         with engine.begin() as conn:
             conn.execute(sa_text(f'DROP TABLE IF EXISTS "{safe}" CASCADE'))
         return {"dropped_table": tbl}
+
+    def _aggregate(self, payload: Dict[str, Any]):
+        """Run aggregate functions (avg, sum, min, max, count) on a single column."""
+        tbl = self._get_table(payload["table"])
+        column = payload.get("column") or payload.get("field")
+        agg = (payload.get("operation") or payload.get("agg") or "count").lower()
+
+        if not column and agg != "count":
+            raise ValueError("'aggregate' requires 'column' for operations other than count")
+
+        from sqlalchemy import func
+
+        col_obj = tbl.c[column] if column else None
+        agg_map = {
+            "count": func.count(),
+            "sum": func.sum(col_obj),
+            "avg": func.avg(col_obj),
+            "min": func.min(col_obj),
+            "max": func.max(col_obj),
+        }
+        if agg not in agg_map:
+            raise ValueError(f"Unsupported aggregate operation '{agg}'. Allowed: {list(agg_map)}")
+
+        stmt = select(agg_map[agg])
+        where = payload.get("where") or {}
+        for col, val in where.items():
+            stmt = stmt.where(tbl.c[col] == val)
+
+        with SessionLocal() as sess:
+            result = sess.execute(stmt).scalar()
+            return {"table": payload["table"], "operation": agg, "value": result}
+
+    def _group_by(self, payload: Dict[str, Any]):
+        """Return counts or aggregates grouped by a column, with optional top_n and percentages."""
+        tbl = self._get_table(payload["table"])
+        group_col = payload["column"]
+        top_n = int(payload.get("top_n", 10))
+        include_percent = bool(payload.get("percent", True))
+
+        from sqlalchemy import func
+
+        col_obj = tbl.c[group_col]
+        stmt = (
+            select(col_obj, func.count().label("count"))
+            .group_by(col_obj)
+            .order_by(func.count().desc())
+        )
+        with SessionLocal() as sess:
+            rows = sess.execute(stmt).all()
+            total = sum(r.count for r in rows)
+            result = []
+            for r in rows[:top_n]:
+                entry = {"value": r[0], "count": r[1]}
+                if include_percent and total:
+                    entry["percent"] = round(r[1] / total * 100, 2)
+                result.append(entry)
+            return {"table": payload["table"], "group_by": payload["column"], "rows": result, "total": total}
+
+    def _time_series(self, payload: Dict[str, Any]):
+        """Histogram over time using date_trunc. payload: table, column (timestamp), granularity (hour/day/week/month)."""
+        tbl = self._get_table(payload["table"])
+        ts_col = tbl.c[payload.get("column", "created_at")]
+        gran = payload.get("granularity", "day")
+
+        from sqlalchemy import func, text as sa_text
+
+        if gran not in {"hour", "day", "week", "month", "year"}:
+            raise ValueError("granularity must be hour/day/week/month/year")
+
+        # date_trunc returns timestamp
+        stmt = select(func.date_trunc(gran, ts_col).label("bucket"), func.count().label("count")).group_by(sa_text("bucket")).order_by(sa_text("bucket"))
+
+        with SessionLocal() as sess:
+            rows = sess.execute(stmt).all()
+            return [{"bucket": str(r.bucket), "count": r.count} for r in rows]
+
+    def _join_select(self, payload: Dict[str, Any]):
+        """Perform simple two-table inner join with explicit on keys."""
+        left_tbl = self._get_table(payload["left_table"])
+        right_tbl = self._get_table(payload["right_table"])
+        left_key = payload["left_key"]
+        right_key = payload["right_key"]
+
+        columns = payload.get("columns")  # list of ["left.column", "right.column"] or None
+
+        join_expr = left_tbl.join(right_tbl, left_tbl.c[left_key] == right_tbl.c[right_key])
+        sel_cols = []
+        if columns:
+            for col in columns:
+                tbl_alias, col_name = col.split(".")
+                if tbl_alias == "left":
+                    sel_cols.append(left_tbl.c[col_name])
+                elif tbl_alias == "right":
+                    sel_cols.append(right_tbl.c[col_name])
+        else:
+            sel_cols = [left_tbl, right_tbl]
+
+        stmt = select(*sel_cols).select_from(join_expr)
+
+        where = payload.get("where") or {}
+        for col, val in where.items():
+            # where keys maybe prefixed "left." or "right." to disambiguate
+            if "." in col:
+                tbl_alias, col_name = col.split(".")
+                tbl_obj = left_tbl if tbl_alias == "left" else right_tbl
+            else:
+                # default to left table
+                tbl_obj = left_tbl
+                col_name = col
+            stmt = stmt.where(tbl_obj.c[col_name] == val)
+
+        limit_val = payload.get("limit")
+        if limit_val is not None:
+            stmt = stmt.limit(int(limit_val))
+
+        with SessionLocal() as sess:
+            rows = sess.execute(stmt).mappings().all()
+            return [dict(r) for r in rows]
 
 
 # Ready-to-use singleton
