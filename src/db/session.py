@@ -5,9 +5,17 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import scoped_session, sessionmaker, declarative_base
 from pathlib import Path
 
-# Default to local SQLite if DATABASE_URL not set
-DEFAULT_SQLITE = "sqlite:///" + str(Path("data/sample.db").absolute())
-DATABASE_URL = os.getenv("DATABASE_URL", DEFAULT_SQLITE)
+# Require DATABASE_URL; fall back to common docker-compose Postgres URL for dev
+# Raise explicit error if not provided so we avoid accidentally using SQLite.
+
+DEFAULT_PG = "postgresql+psycopg2://postgres:postgres@localhost:5433/agentic"
+DATABASE_URL = os.getenv("DATABASE_URL", DEFAULT_PG)
+
+if DATABASE_URL.startswith("sqlite"):
+    raise RuntimeError(
+        "SQLite backend is no longer supported. Set DATABASE_URL to a Postgres connection string "
+        "(e.g. postgresql+psycopg2://postgres:postgres@localhost:5432/agentic)."
+    )
 
 engine = create_engine(DATABASE_URL, echo=False, future=True)
 SessionLocal = scoped_session(sessionmaker(bind=engine, autocommit=False, autoflush=False))
