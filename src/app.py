@@ -7,7 +7,11 @@ import os
 import logging
 from dotenv import load_dotenv
 
-from .agents.base_agent import Agent
+# Load env first so downstream imports see API keys
+load_dotenv(".env", override=False)
+
+# Switched to LangGraph-based agent
+from .agents.langgraph_agent import LangGraphAgent
 from .settings import RuntimeSettings
 from .llm import get_llm_client, OpenAIClient, AnthropicClient, GeminiClient, DeepSeekClient
 from src.utils.logger import setup_logger
@@ -21,8 +25,6 @@ logger = setup_logger(level="DEBUG")
 # Configure root logger so DEBUG messages propagate to console (override any prior config)
 logging.basicConfig(level=logging.DEBUG, format="[%(levelname)s] %(message)s", force=True)
 
-# Load .env file so API keys become environment variables
-load_dotenv(".env", override=False)
 
 app = FastAPI(title="Agentic AI MCP Sandbox", version="0.2.0")
 
@@ -49,7 +51,7 @@ async def _configure_logging():
 runtime_settings = RuntimeSettings()
 
 # Single shared agent instance
-agent = Agent(runtime_settings)
+agent = LangGraphAgent()
 
 # Serve static web UI (index.html, chat.js, etc.)
 app.mount("/ui", StaticFiles(directory="src/webui", html=True), name="webui")
@@ -87,8 +89,8 @@ async def websocket_endpoint(ws: WebSocket):
 
             logger.debug("[ws] prompt=%s", prompt)
 
-            # Call agent synchronously (fast for PoC)
-            response_text = agent.chat(prompt)
+            # Call agent asynchronously
+            response_text = await agent.chat(prompt)
 
             logger.debug("[ws] response=%s", response_text)
 
@@ -127,7 +129,7 @@ async def chat(req: PromptRequest):
     try:
         logging.debug("[chat endpoint] Received prompt: %s", req.prompt)
         print("CHAT ENDPOINT RECEIVED", req.prompt)
-        result = agent.chat(req.prompt)
+        result = await agent.chat(req.prompt)
         logging.debug("[chat endpoint] Response: %s", result)
         print("CHAT ENDPOINT RESPONSE", result)
         return PromptResponse(response=result)
