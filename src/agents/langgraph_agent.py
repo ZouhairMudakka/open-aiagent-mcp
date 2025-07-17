@@ -9,10 +9,11 @@ from typing import Any, Dict, List, TypedDict
 
 from langchain_openai import ChatOpenAI
 from langgraph.graph import StateGraph, END
-from langchain_core.messages import HumanMessage, AIMessage, ToolMessage
+from langchain_core.messages import HumanMessage, AIMessage, ToolMessage, SystemMessage
 
 # Import tool spec modules so they register themselves
 from src.agent_tools import postgres_tools  # noqa: F401
+from src.tools.postgres_tool import pg_tool  # <-- add import to access table list
 
 from src.agent_tools.spec import all_tools
 
@@ -156,7 +157,17 @@ def _route(state: AgentState):
     last = state["messages"][-1]
     ak = getattr(last, "additional_kwargs", {})
     if ak.get("function_call") or ak.get("tool_calls"):
+        # If previous message (tool result) contained an error, stop instead of
+        # routing back to tools to avoid infinite retries.
+        if len(state["messages"]) >= 2 and isinstance(state["messages"][-2], ToolMessage):
+            if str(state["messages"][-2].content).lower().startswith("error"):
+                return "end"
+        # Otherwise continue to tool execution.
         return "tools"
+    # If the last message itself is a ToolMessage and contains an error, stop.
+    if isinstance(state["messages"][-1], ToolMessage):
+        if str(state["messages"][-1].content).lower().startswith("error"):
+            return "end"
     return "end"          # ← return the label, not END
 
 graph.add_conditional_edges("agent", _route, {"tools": "tools", "end": END})
@@ -174,7 +185,85 @@ class LangGraphAgent:
         self._events: List[Dict[str, Any]] = []
 
     async def chat(self, prompt: str) -> str:
-        initial_state = {"messages": [HumanMessage(content=prompt)]}
+        # ------------------------------------------------------------------
+        # Build schema context + read-only policy message
+        # ------------------------------------------------------------------
+
+        schema_msgs: List[Any] = []
+
+        try:
+            tables = pg_tool({"action": "list_tables"})
+            table_names = ", ".join(t["table"] for t in tables[:10])
+            if table_names:
+                schema_msgs.append(SystemMessage(content=f"Known tables: {table_names}"))
+
+            # Optional UX helper – show tables that contain date/timestamp columns
+            date_tables: List[str] = []
+            for t in tables:
+                try:
+                    desc = pg_tool({"action": "describe_table", "table": t["table"]})
+                    has_date = any(
+                        ("date" in c["type"].lower() or "time" in c["type"].lower()) for c in desc["columns"]
+                    )
+                    if has_date:
+                        date_tables.append(t["table"])
+                except Exception:
+                    # Ignore issues with reflection for now
+                    continue
+            if date_tables:
+                schema_msgs.append(
+                    SystemMessage(content=f"Tables with DATE/TIMESTAMP columns: {', '.join(date_tables)}")
+                )
+        except Exception:
+            pass
+
+        # ------------------------------------------------------------------
+        # Read-only heuristic – if prompt looks analytical/visual and NOT mutative
+        # ------------------------------------------------------------------
+
+        analytic_keywords = [
+            "plot",
+            "histogram",
+            "chart",
+            "graph",
+            "show",
+            "list",
+            "count",
+            "average",
+            "sum",
+            "top",
+            "aggregate",
+            "group",
+            "describe",
+        ]
+        mutative_keywords = [
+            "insert",
+            "create",
+            "add",
+            "update",
+            "delete",
+            "drop",
+        ]
+
+        lower_prompt = prompt.lower()
+        is_analytic = any(k in lower_prompt for k in analytic_keywords)
+        wants_modify = any(k in lower_prompt for k in mutative_keywords)
+
+        if is_analytic and not wants_modify:
+            schema_msgs.append(
+                SystemMessage(
+                    content=(
+                        "Read-only mode: the user appears to want analytics/visualisation only. "
+                        "Do NOT call create_table, add_column, insert_rows, update, or delete. "
+                        "If no suitable data exists, reply politely that it is unavailable."
+                    )
+                )
+            )
+
+        msgs = schema_msgs
+        msgs.append(HumanMessage(content=prompt))
+
+        initial_state = {"messages": msgs}
         result = await workflow.ainvoke(initial_state)
         final_msg = result["messages"][-1]
         return final_msg.content
