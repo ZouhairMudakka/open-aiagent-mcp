@@ -9,7 +9,7 @@ from pydantic import BaseModel
 from ..mcp.protocol import MCPMessage, MCPToolCall, MCPToolResponse  # type: ignore
 from ..mcp.connectors.zapier_connector import ZapierConnector  # type: ignore
 from ..mcp.connectors.n8n_connector import N8NConnector  # type: ignore
-from ..tools.db_tool import DBTool
+from ..tools.postgres_tool import PostgresDBTool
 from ..settings import RuntimeSettings
 from ..llm import get_llm_client
 import logging
@@ -52,30 +52,33 @@ class Agent:
         # ------------------------------------------------------------
         # Low-level DB tool (slash-command style)
         # ------------------------------------------------------------
-        self.db_tool = DBTool()
+        self.db_tool = PostgresDBTool()
+
+        # Legacy catch-all for quick experiments (/db {json})
         self.register_tool(
             "db",
-            "Add, delete, update, or list rows in the sample SQLite DB.",
+            "Execute a raw PostgresDBTool call (JSON payload required).",
             self.db_tool,
         )
+
+        # -------------------------------
+        # Structured schema / data tools
+        # -------------------------------
+
+        def db_schema(payload: dict):
+            """Run schema-level operations (create_table, add_column …)."""
+            return self.db_tool(payload)
+
+        def db_query(payload: dict):
+            """Run data-level operations (insert, select, update, delete)."""
+            return self.db_tool(payload)
+
+        self.register_tool("db_schema", "Create or alter tables/columns", db_schema)
+        self.register_tool("db_query", "Insert/select/update/delete rows", db_query)
 
         # ------------------------------------------------------------
         # Natural-language friendly helpers
         # ------------------------------------------------------------
-
-        def db_add(data: str | Dict[str, Any] = None, **kwargs):
-            """Add a text entry to the sample database.
-
-            Pass either a plain string (data) or an object {"data": "..."}."""
-            if isinstance(data, dict):
-                payload = data
-            else:
-                payload = {"data": data}
-            return self.db_tool({"action": "add", **payload})
-
-        def db_list():
-            """Return every row currently stored in the sample database."""
-            return self.db_tool({"action": "list"})
 
         def send_email(to: str, subject: str, body: str):
             """Send an e-mail via the pre-configured Zapier workflow."""
@@ -84,8 +87,6 @@ class Agent:
                 {"to": to, "subject": subject, "body": body},
             )
 
-        self.register_tool("db_add", "Add a text entry to the DB", db_add)
-        self.register_tool("db_list", "List all DB rows", db_list)
         self.register_tool("send_email", "Send an e-mail via Zapier", send_email)
 
         # LangChain agent executor (lazy init)
@@ -128,8 +129,8 @@ class Agent:
             tool_name, tool_args = _cls(prompt)
             if tool_name:
                 return str(self.invoke_tool(tool_name, tool_args))
-            # else delegate to LangChain agent
-            return self._chat_via_langchain(prompt, settings)
+            # No matching tool – respond gracefully
+            return "Sorry, I don't have a tool for that request yet."
 
         # Fallback: send to LLM
         if not settings.model:
